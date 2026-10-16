@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ContrastPool Demo</title>
+<style>
+:root{--bg:#f7f7fb;--card:#fff;--tx:#1d1d2b;--mut:#6b6b80;--ac:#5b4bdb;--ok:#1a9f5a;--bad:#e07a1f;--bd:#e2e2ee;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14141d;--card:#1e1e2b;--tx:#ececf5;--mut:#9a9ab0;--ac:#8c7dff;--ok:#3ddc84;--bad:#ffa24d;--bd:#33334a}}
+:root[data-theme="dark"]{--bg:#14141d;--card:#1e1e2b;--tx:#ececf5;--mut:#9a9ab0;--ac:#8c7dff;--ok:#3ddc84;--bad:#ffa24d;--bd:#33334a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5}
+.wrap{max-width:1000px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:1.5rem;margin:0 0 4px}
+.sub{color:var(--mut);margin:0 0 18px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px;margin-bottom:16px}
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+label{display:block;font-size:.85rem;color:var(--mut)}
+label b{color:var(--tx)}
+input[type=range]{width:100%;accent-color:var(--ac)}
+button{background:var(--ac);color:#fff;border:0;border-radius:10px;padding:10px 16px;font-size:.95rem;cursor:pointer;margin-top:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+canvas{width:100%;height:auto;border-radius:8px;background:var(--bg);display:block}
+.cap{font-size:.85rem;color:var(--mut);margin-top:6px}
+.cap strong{color:var(--tx)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.stat{text-align:center;padding:10px;border-radius:10px;background:var(--bg)}
+.stat .v{font-size:1.6rem;font-weight:700;color:var(--ac)}
+.stat .l{font-size:.8rem;color:var(--mut)}
+.legend span{display:inline-block;margin-right:14px;font-size:.85rem}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px}
+ol{margin:6px 0 0 18px;padding:0;color:var(--mut);font-size:.9rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>ContrastPool: Concept Demo</h1>
+  <p class="sub">Fake brain networks for two groups. Find where the groups differ, then use only those connections to classify.</p>
+
+  <div class="card">
+    <div class="controls">
+      <label>Subjects: <b id="vN">200</b><input id="N" type="range" min="60" max="400" step="20" value="200"></label>
+      <label>Signal strength: <b id="vS">0.35</b><input id="S" type="range" min="0.1" max="0.8" step="0.05" value="0.35"></label>
+      <label>Noise (low SNR): <b id="vZ">0.5</b><input id="Z" type="range" min="0.1" max="1.5" step="0.1" value="0.5"></label>
+      <label>Top-K edges used: <b id="vK">6</b><input id="K" type="range" min="2" max="30" step="1" value="6"></label>
+    </div>
+    <button id="go">Generate new data</button>
+  </div>
+
+  <div class="card">
+    <div class="stats">
+      <div class="stat"><div class="v" id="sRec">-</div><div class="l">hidden connections recovered</div></div>
+      <div class="stat"><div class="v" id="sAll">-</div><div class="l">accuracy using ALL edges</div></div>
+      <div class="stat"><div class="v" id="sCon">-</div><div class="l">accuracy using CONTRAST edges</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="grid">
+      <div><canvas id="c0" width="300" height="300"></canvas><div class="cap"><strong>Group 0</strong> average network (healthy)</div></div>
+      <div><canvas id="c1" width="300" height="300"></canvas><div class="cap"><strong>Group 1</strong> average network (condition)</div></div>
+      <div><canvas id="c2" width="300" height="300"></canvas><div class="cap"><strong>Contrast graph</strong> = |Group 0 − Group 1|. Bright = big difference.</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <canvas id="circ" width="620" height="620" style="max-width:520px;margin:0 auto"></canvas>
+    <div class="legend" style="text-align:center;margin-top:10px">
+      <span><i class="dot" style="background:var(--ok)"></i>found hidden connection</span>
+      <span><i class="dot" style="background:var(--bad)"></i>false alarm</span>
+      <span><i class="dot" style="background:var(--mut)"></i>missed (dashed)</span>
+    </div>
+    <div class="cap" style="text-align:center">Dots are brain regions. Lines are the top-K edges from the contrast graph.</div>
+  </div>
+
+  <div class="card">
+    <b>What you are seeing</b>
+    <ol>
+      <li>Each subject is a 30×30 connectivity matrix (how strongly regions talk to each other), built from noisy fake signals.</li>
+      <li>Group 1 secretly has a few boosted connections. Those are the "hidden clues".</li>
+      <li>The contrast graph subtracts the group averages, so the clues light up.</li>
+      <li>Classifying with only the top-K contrast edges ignores most of the noise. That is the core idea of the paper.</li>
+    </ol>
+    <p class="cap"><strong>Note:</strong> this demo uses plain group averages. The real ContrastPool also learns attention weights over regions and subjects and uses a trained graph neural network (see the Python file).</p>
+  </div>
+</div>
+
+<script>
+const M=30,T=60;
+let seed=1;
+function rnd(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296}
+function randn(){let u=0,v=0;while(!u)u=rnd();v=rnd();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)}
+const $=id=>document.getElementById(id);
+let state=null;
+
+function corr(X){
+  const mu=X.map(r=>r.reduce((a,b)=>a+b,0)/T);
+  const sd=X.map((r,i)=>Math.sqrt(r.reduce((a,b)=>a+(b-mu[i])**2,0)/T));
+  const C=[];
+  for(let i=0;i<M;i++){C.push(new Float32Array(M));
+    for(let j=0;j<M;j++){let s=0;for(let t=0;t<T;t++)s+=(X[i][t]-mu[i])*(X[j][t]-mu[j]);C[i][j]=s/T/(sd[i]*sd[j]+1e-9)}}
+  return C;
+}
+
+function generate(){
+  seed=(Math.random()*1e9)>>>0;
+  const N=+$('N').value,sig=+$('S').value,noise=+$('Z').value;
+  const planted=[];const seen=new Set();
+  while(planted.length<6){let i=Math.floor(rnd()*M),j=Math.floor(rnd()*M);if(i===j)continue;
+    if(i>j)[i,j]=[j,i];const k=i*M+j;if(seen.has(k))continue;seen.add(k);planted.push([i,j])}
+  const data=[];
+  for(let s=0;s<N;s++){
+    const y=s%2;
+    const X=Array.from({length:M},()=>Array.from({length:T},randn));
+    if(y===1)planted.forEach(([i,j])=>{for(let t=0;t<T;t++)X[j][t]=sig*X[i][t]+(1-sig)*X[j][t]});
+    for(let i=0;i<M;i++)for(let t=0;t<T;t++)X[i][t]+=noise*randn();
+    data.push({C:corr(X),y});
+  }
+  state={data,planted};
+  analyse();
+}
+
+function analyse(){
+  if(!state)return;
+  const K=+$('K').value;
+  const {data,planted}=state;
+  const nTrain=Math.floor(data.length*0.8);
+  const train=data.slice(0,nTrain),test=data.slice(nTrain);
+  const mean=[0,1].map(g=>{const sub=train.filter(d=>d.y===g);const A=Array.from({length:M},()=>new Float32Array(M));
+    sub.forEach(d=>{for(let i=0;i<M;i++)for(let j=0;j<M;j++)A[i][j]+=d.C[i][j]/sub.length});return A});
+  const con=Array.from({length:M},(_,i)=>Float32Array.from({length:M},(_,j)=>Math.abs(mean[0][i][j]-mean[1][i][j])));
+  // edge list (upper triangle)
+  const edges=[];for(let i=0;i<M;i++)for(let j=i+1;j<M;j++)edges.push([i,j,con[i][j]]);
+  const ranked=[...edges].sort((a,b)=>b[2]-a[2]);
+  const top=ranked.slice(0,K);
+  const pset=new Set(planted.map(([i,j])=>i*M+j));
+  const topHit=top.filter(([i,j])=>pset.has(i*M+j)).length;
+  // nearest-centroid classifier on a chosen edge set
+  const classify=(es)=>{
+    const cen=[0,1].map(g=>es.map(([i,j])=>mean[g][i][j]));
+    let ok=0;
+    test.forEach(d=>{const v=es.map(([i,j])=>d.C[i][j]);
+      const dist=cen.map(c=>c.reduce((a,x,k)=>a+(x-v[k])**2,0));
+      if((dist[0]<dist[1]?0:1)===d.y)ok++});
+    return ok/test.length;
+  };
+  $('sRec').textContent=Math.min(topHit,planted.length)+" / "+planted.length;
+  $('sAll').textContent=(classify(edges)*100).toFixed(0)+"%";
+  $('sCon').textContent=(classify(top)*100).toFixed(0)+"%";
+  heat($('c0'),mean[0],-1,1,true);heat($('c1'),mean[1],-1,1,true);
+  let mx=0;edges.forEach(e=>mx=Math.max(mx,e[2]));
+  heat($('c2'),con,0,mx,false);
+  circle(top,planted,pset);
+}
+
+function heat(cv,A,lo,hi,diverge){
+  const ctx=cv.getContext('2d'),s=cv.width/M;
+  for(let i=0;i<M;i++)for(let j=0;j<M;j++){
+    const t=Math.max(0,Math.min(1,(A[i][j]-lo)/(hi-lo||1)));
+    let r,g,b;
+    if(diverge){ if(t<.5){const u=t*2;r=60+195*u;g=90+165*u;b=220+35*u}else{const u=(t-.5)*2;r=255;g=255-175*u;b=255-200*u} }
+    else{r=30+225*t;g=20+190*t*t+30*t;b=60+10*t}
+    ctx.fillStyle=`rgb(${r|0},${g|0},${b|0})`;ctx.fillRect(j*s,i*s,s+.5,s+.5);
+  }
+}
+
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()}
+function circle(top,planted,pset){
+  const cv=$('circ'),ctx=cv.getContext('2d'),W=cv.width,R=W/2-40,c=W/2;
+  ctx.clearRect(0,0,W,W);
+  const pos=i=>{const a=2*Math.PI*i/M-Math.PI/2;return[c+R*Math.cos(a),c+R*Math.sin(a)]};
+  const tset=new Set(top.map(([i,j])=>i*M+j));
+  // missed planted edges (dashed)
+  ctx.setLineDash([6,6]);ctx.strokeStyle=css('--mut');ctx.lineWidth=2;
+  planted.forEach(([i,j])=>{if(!tset.has(i*M+j)){const a=pos(i),b=pos(j);ctx.beginPath();ctx.moveTo(...a);ctx.lineTo(...b);ctx.stroke()}});
+  ctx.setLineDash([]);
+  top.forEach(([i,j])=>{const hit=pset.has(i*M+j);
+    ctx.strokeStyle=css(hit?'--ok':'--bad');ctx.lineWidth=hit?3.5:2;ctx.globalAlpha=.85;
+    const a=pos(i),b=pos(j);ctx.beginPath();ctx.moveTo(...a);ctx.quadraticCurveTo(c,c,...b);ctx.stroke();ctx.globalAlpha=1});
+  const ends=new Set();top.forEach(([i,j])=>{ends.add(i);ends.add(j)});
+  for(let i=0;i<M;i++){const [x,y]=pos(i);ctx.beginPath();ctx.arc(x,y,ends.has(i)?8:5,0,7);
+    ctx.fillStyle=ends.has(i)?css('--ac'):css('--mut');ctx.fill()}
+}
+
+['N','S','Z','K'].forEach(id=>$(id).addEventListener('input',()=>{
+  $({N:'vN',S:'vS',Z:'vZ',K:'vK'}[id]).textContent=$(id).value;
+  if(id==='K')analyse();
+}));
+['N','S','Z'].forEach(id=>$(id).addEventListener('change',generate));
+$('go').addEventListener('click',generate);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',analyse);
+generate();
+</script>
+</body>
+</html>
